@@ -17,6 +17,10 @@ import re
 import warnings
 import sys
 import time
+from shutil import copyfile
+from process_data import process_data
+from conv_net_classes import *
+np.set_printoptions(threshold=np.nan)
 warnings.filterwarnings("ignore")   
 
 #different non-linearities
@@ -32,7 +36,7 @@ def Tanh(x):
 def Iden(x):
     y = x
     return(y)
-
+       
 def train_conv_net(datasets,
                    U,
                    img_w=300, 
@@ -46,7 +50,10 @@ def train_conv_net(datasets,
                    conv_non_linear="relu",
                    activations=[Iden],
                    sqr_norm_lim=9,
-                   non_static=True):
+                   non_static=True,
+                   test_batch=1000,
+                   savename="predictions",
+                   savetofile=False):
     """
     Train a simple conv net
     img_h = sentence length (padded where necessary)
@@ -119,8 +126,7 @@ def train_conv_net(datasets,
     n_batches = new_data.shape[0]/batch_size
     n_train_batches = int(np.round(n_batches*0.9))
     #divide train set into train/val sets 
-    test_set_x = datasets[1][:,:img_h] 
-    test_set_y = np.asarray(datasets[1][:,-1],"int32")
+    #test_set_y = np.asarray(datasets[1][:,-1],"int32")
     train_set = new_data[:n_train_batches*batch_size,:]
     val_set = new_data[n_train_batches*batch_size:,:]     
     train_set_x, train_set_y = shared_dataset((train_set[:,:img_h],train_set[:,-1]))
@@ -143,17 +149,6 @@ def train_conv_net(datasets,
             x: train_set_x[index*batch_size:(index+1)*batch_size],
               y: train_set_y[index*batch_size:(index+1)*batch_size]},
                                   allow_input_downcast = True)     
-    test_pred_layers = []
-    test_size = test_set_x.shape[0]
-    test_layer0_input = Words[T.cast(x.flatten(),dtype="int32")].reshape((test_size,1,img_h,Words.shape[1]))
-    for conv_layer in conv_layers:
-        test_layer0_output = conv_layer.predict(test_layer0_input, test_size)
-        test_pred_layers.append(test_layer0_output.flatten(2))
-    test_layer1_input = T.concatenate(test_pred_layers, 1)
-    test_y_pred = classifier.predict(test_layer1_input)
-    test_error = T.mean(T.neq(test_y_pred, y))
-    test_model_all = theano.function([x,y], test_error, allow_input_downcast = True)   
-    
     #start training over mini-batches
     print '... training'
     epoch = 0
@@ -177,11 +172,42 @@ def train_conv_net(datasets,
         val_losses = [val_model(i) for i in xrange(n_val_batches)]
         val_perf = 1- np.mean(val_losses)                        
         print('epoch: %i, training time: %.2f secs, train perf: %.2f %%, val perf: %.2f %%' % (epoch, time.time()-start_time, train_perf * 100., val_perf*100.))
-        if val_perf >= best_val_perf:
-            best_val_perf = val_perf
-            test_loss = test_model_all(test_set_x,test_set_y)        
-            test_perf = 1- test_loss
-    return test_perf
+        #if val_perf >= best_val_perf:
+        #    best_val_perf = val_perf
+        #    test_loss = test_model_all(test_set_x,test_set_y)
+        #    test_perf = 1- test_loss
+
+
+    o = 0
+    test_predictions = []
+    test_predictions_p = []
+    len_test = datasets[1].shape[0]
+    print "Classifying from a test made up of", len_test, "sentences"
+    while o < len_test:
+        print "Classifying sentences from", o, "to", min(o+test_batch, len_test)
+        test_set_x = datasets[1][o:min(o+test_batch, len_test),:img_h]
+        test_size = test_set_x.shape[0]
+        test_layer0_input = Words[T.cast(x.flatten(),dtype="int32")].reshape((test_size,1,img_h,Words.shape[1]))
+        test_pred_layers = []
+        for conv_layer in conv_layers:
+            test_layer0_output = conv_layer.predict(test_layer0_input, test_size)
+            test_pred_layers.append(test_layer0_output.flatten(2))
+        test_layer1_input = T.concatenate(test_pred_layers, 1)
+        test_y_pred = classifier.predict(test_layer1_input)
+        test_y_pred_p = classifier.predict_p(test_layer1_input)
+        test_error = T.mean(T.neq(test_y_pred, y))
+        test_model_all = theano.function([x,y], test_error, allow_input_downcast = True)
+        predict_val = theano.function([x], test_y_pred, allow_input_downcast=True)
+        predict_p = theano.function([x], test_y_pred_p, allow_input_downcast=True)
+
+        test_predictions.append(predict_val(test_set_x))
+        test_predictions_p.append(predict_p(test_set_x))
+
+        o +=test_batch
+    if savetofile:
+        cPickle.dump(test_predictions, open("%s.pkl"%savename, "wb"))
+        cPickle.dump(test_predictions_p, open("%s.pkl"%(savename+'_p'), "wb"))
+    return test_perf, test_predictions, test_predictions_p
 
 def shared_dataset(data_xy, borrow=True):
         """ Function that loads the dataset into shared variables
@@ -275,20 +301,163 @@ def make_idx_data_cv(revs, word_idx_map, cv, max_l=51, k=300, filter_h=5):
     for rev in revs:
         sent = get_idx_from_sent(rev["text"], word_idx_map, max_l, k, filter_h)   
         sent.append(rev["y"])
-        if rev["split"]==cv:            
+        if rev["split"]==cv:
             test.append(sent)        
         else:  
-            train.append(sent)   
+            train.append(sent)
     train = np.array(train,dtype="int")
     test = np.array(test,dtype="int")
     return [train, test]     
-  
-   
-if __name__=="__main__":
-    print "loading data...",
-    x = cPickle.load(open("mr.p","rb"))
-    revs, W, W2, word_idx_map, vocab = x[0], x[1], x[2], x[3], x[4]
-    print "data loaded!"
+
+
+
+def make_idx_data_holdout(revs, word_idx_map, max_l=51, k=300, filter_h=5):
+    """
+    Transforms sentences into a 2-d matrix.
+    """
+    train, test = [], []
+    for rev in revs:
+        sent = get_idx_from_sent(rev["text"], word_idx_map, max_l, k, filter_h)
+        if rev["split"]=='test':
+            test.append(sent)
+        else:
+            train.append(sent)
+            sent.append(rev["y"])
+
+    train = np.array(train,dtype="int")
+    test = np.array(test,dtype="int")
+    return [train, test]
+
+
+
+def write_in_txt(data, data_p, filename='./test_data.txt'):
+     f = open(filename, 'wb')
+     classes = cPickle.load(open(data))
+     probabilities = cPickle.load(open(data_p))
+
+     for v, vp in zip(classes, probabilities):
+        for va, vap in zip(v, vp):
+            f.write(str(va)+ ' ' + str(vap) + '\n')
+     f.close()
+     del classes
+     del probabilities
+
+
+def process_prediction_probs(prediction_probs, n_intances_to_add, pool):
+    probs = numpy.array([], dtype="float32")
+    for batch in prediction_probs:
+        probs=numpy.append(probs,batch)
+    probs = probs.reshape(-1, 2)
+    top_positive_positions = probs.argsort(axis=0)[:, 0][:n_intances_to_add]
+    top_negative_positions = probs.argsort(axis=0)[:, 1][:n_intances_to_add]
+    positive_lines = []
+    negative_lines = []
+    neutral_lines = []
+    pool_file = open(pool)
+    for i, line in enumerate(pool_file):
+        if i in top_negative_positions:
+            negative_lines.append(line)
+        elif i in top_positive_positions:
+            positive_lines.append(line)
+        else:
+            neutral_lines.append(line)
+    pool_file.close()
+    return positive_lines, negative_lines, neutral_lines
+
+
+def semisupervised_selection(data_dir, initial_pos_filename, initial_neg_filename, initial_pool_filename, w2v_file,
+                             word_vectors="-rand", non_static=True, n_iter=10, test_batch=7000, instances_to_add=50000):
+
+    """
+    Performs a semisupervised text selection over a pool of sentences based on initial positive/negative files.
+    The steps that takes are:
+        1. Classify the pool according the positive/negative samples through a CNN
+        2. Take the most positive and most negative sentences from the pool and includes it into the positive/negative training samples
+        3. With this extended positive/negative sets, trains another CNN and backs to 1.
+
+    :param data_dir: Directoty where the data files are
+    :param initial_pos_filename: Initial "in-domain" corpus
+    :param initial_neg_filename: Initial "out-of-domain" corpus
+    :param initial_pool_filename: Pool of sentences where to perform the selection
+    :param w2v_file: Word2vec file (for the CNN input)
+    :param word_vectors: To use word vectors from word2vec or random word vector
+    :param non_static: Non-static CNNs
+    :param n_iter: Number of iterations carried out by the proccess
+    :param test_batch: Classify the pool with this batch
+    :param instances_to_add: Number of instances to add at each iteration
+    :return:
+    """
+    pos_filename = data_dir + '/' + initial_pos_filename
+    neg_filename = data_dir + '/' + initial_neg_filename
+    pool_filename = data_dir + '/' + initial_pool_filename
+
+    for i in range(n_iter):
+
+        print "------------------ Starting iteration", i, "------------------"
+        new_pos_filename = data_dir + '/positive_' + str(i)
+        new_neg_filename = data_dir + '/negative_' + str(i)
+        new_pool_filename = data_dir + '/pool_' + str(i)
+
+        copyfile(pos_filename, new_pos_filename )
+        copyfile(neg_filename, new_neg_filename )
+        copyfile(pool_filename,new_pool_filename)
+
+
+        x = process_data(w2v_file, new_pos_filename, new_neg_filename, new_pool_filename)
+        revs, W, W2, word_idx_map, vocab = x[0], x[1], x[2], x[3], x[4]
+
+        if word_vectors=="-rand":
+            print "using: random vectors"
+            U = W2
+        elif word_vectors=="-word2vec":
+            print "using: word2vec vectors"
+            U = W
+        results = []
+        datasets = make_idx_data_holdout(revs, word_idx_map, max_l=46,k=300, filter_h=5)
+        perf, predictions, prediction_probs = train_conv_net(datasets, U, lr_decay=0.95, filter_hs=[3,4,5],
+                                                              conv_non_linear="relu", hidden_units=[100,100,2],
+                                                              shuffle_batch=True, n_epochs=16, sqr_norm_lim=9,
+                                                              non_static=non_static, batch_size=128, dropout_rate=[0.5],
+                                                              test_batch=test_batch, savename="predictions_"+str(i),
+                                                             savetofile=False)
+        positive_lines, negative_lines, neutral_lines = process_prediction_probs(prediction_probs,
+                                                                                 instances_to_add,
+                                                                                 pool_filename)
+
+
+        print "Adding", len(positive_lines), "positive lines"
+        print "Adding", len(negative_lines), "negative lines"
+        print "Adding", len(neutral_lines),  "neutral lines"
+
+        new_pos_file = open(new_pos_filename, 'a')
+        new_neg_file = open(new_neg_filename, 'a')
+        new_pool_file = open(new_pool_filename, 'w')
+
+        for line in positive_lines:
+            new_pos_file.write(line)
+        for line in negative_lines:
+            new_neg_file.write(line)
+        for line in neutral_lines:
+            new_pool_file.write(line)
+
+        new_pos_file.close()
+        new_neg_file.close()
+        new_pool_file.close()
+        pos_filename = new_pos_filename
+        neg_filename = new_neg_filename
+        pool_filename =new_pool_filename
+
+
+        print "perf: " + str(perf)
+        results.append(perf)
+        print str(np.mean(results))
+        #write_in_txt("predictions_"+str(i), "predictions_"+str(i), 'train_tags_probs' + str(i) + '.txt')
+
+
+
+
+if __name__ == "__main__":
+
     mode= sys.argv[1]
     word_vectors = sys.argv[2]    
     if mode=="-nonstatic":
@@ -297,29 +466,16 @@ if __name__=="__main__":
     elif mode=="-static":
         print "model architecture: CNN-static"
         non_static=False
-    execfile("conv_net_classes.py")    
-    if word_vectors=="-rand":
-        print "using: random vectors"
-        U = W2
-    elif word_vectors=="-word2vec":
-        print "using: word2vec vectors"
-        U = W
-    results = []
-    r = range(0,10)    
-    for i in r:
-        datasets = make_idx_data_cv(revs, word_idx_map, i, max_l=56,k=300, filter_h=5)
-        perf = train_conv_net(datasets,
-                              U,
-                              lr_decay=0.95,
-                              filter_hs=[3,4,5],
-                              conv_non_linear="relu",
-                              hidden_units=[100,2], 
-                              shuffle_batch=True, 
-                              n_epochs=25, 
-                              sqr_norm_lim=9,
-                              non_static=non_static,
-                              batch_size=50,
-                              dropout_rate=[0.5])
-        print "cv: " + str(i) + ", perf: " + str(perf)
-        results.append(perf)  
-    print str(np.mean(results))
+    execfile("conv_net_classes.py")
+
+
+    data_dir = 'data'
+    initial_pos_filename = 'test_positivo.en'
+    initial_neg_filename = 'test_negativo.en'
+    initial_pool_filename= 'training.en'
+    w2v_file = data_dir+'/GoogleNews-vectors-negative300.bin'
+    semisupervised_selection(data_dir, initial_pos_filename, initial_neg_filename, initial_pool_filename, w2v_file,
+                             word_vectors=word_vectors, non_static=non_static, n_iter=10,
+                             test_batch=7000, instances_to_add=5000)
+
+

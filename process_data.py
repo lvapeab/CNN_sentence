@@ -4,6 +4,70 @@ from collections import defaultdict
 import sys, re
 import pandas as pd
 
+
+
+def build_data_hold_out(pos_file, neg_file, pool_file, clean_string=True):
+    """
+    Loads data and split into two sets.
+    """
+    revs = []
+    pos_file = pos_file
+    neg_file = neg_file
+    test_file = pool_file
+    vocab = defaultdict(float)
+    with open(pos_file, "rb") as f:
+        for line in f:
+            rev = []
+            rev.append(line.strip())
+            if clean_string:
+                orig_rev = clean_str(" ".join(rev))
+            else:
+                orig_rev = " ".join(rev).lower()
+            words = set(orig_rev.split())
+            for word in words:
+                vocab[word] += 1
+            datum  = {"y":1,
+                      "text": orig_rev,
+                      "num_words": len(orig_rev.split()),
+                      "split": 'train'}
+            revs.append(datum)
+    with open(neg_file, "rb") as f:
+        for line in f:
+            rev = []
+            rev.append(line.strip())
+            if clean_string:
+                orig_rev = clean_str(" ".join(rev))
+            else:
+                orig_rev = " ".join(rev).lower()
+            words = set(orig_rev.split())
+            for word in words:
+                vocab[word] += 1
+            datum  = {"y":0,
+                      "text": orig_rev,
+                      "num_words": len(orig_rev.split()),
+                      "split": 'train'}
+            revs.append(datum)
+
+    with open(test_file, "rb") as f:
+        for line in f:
+            rev = []
+            rev.append(line.strip())
+            if clean_string:
+                orig_rev = clean_str(" ".join(rev))
+            else:
+                orig_rev = " ".join(rev).lower()
+            words = set(orig_rev.split())
+            for word in words:
+                vocab[word] += 1
+            datum  = {"text": orig_rev,
+                      "num_words": len(orig_rev.split()),
+                      "split": 'test'}
+            revs.append(datum)
+
+    return revs, vocab
+
+
+
 def build_data_cv(data_folder, cv=10, clean_string=True):
     """
     Loads data and split into 10 folds.
@@ -122,11 +186,9 @@ def clean_str_sst(string):
     string = re.sub(r"\s{2,}", " ", string)    
     return string.strip().lower()
 
-if __name__=="__main__":    
-    w2v_file = sys.argv[1]     
-    data_folder = ["rt-polarity.pos","rt-polarity.neg"]    
-    print "loading data...",        
-    revs, vocab = build_data_cv(data_folder, cv=10, clean_string=True)
+def process_data(w2v_file,  pos_file, neg_file, pool_file, outfile=None):
+    print "loading data...",
+    revs, vocab = build_data_hold_out(pos_file, neg_file, pool_file, clean_string=True)
     max_l = np.max(pd.DataFrame(revs)["num_words"])
     print "data loaded!"
     print "number of sentences: " + str(len(revs))
@@ -141,6 +203,12 @@ if __name__=="__main__":
     rand_vecs = {}
     add_unknown_words(rand_vecs, vocab)
     W2, _ = get_W(rand_vecs)
-    cPickle.dump([revs, W, W2, word_idx_map, vocab], open("mr.p", "wb"))
-    print "dataset created!"
-    
+    if outfile:
+        cPickle.dump([revs, W, W2, word_idx_map, vocab], open(outfile, "wb"))
+    else:
+        return revs, W, W2, word_idx_map, vocab
+if __name__=="__main__":
+    w2v_file = sys.argv[1]
+    data_folder = ["data/test.en","data/test_negativo.en", "data/training.en"]
+    outfile = "mr.pkl"
+    process_data(w2v_file, data_folder, outfile)

@@ -17,6 +17,9 @@ import re
 import warnings
 import sys
 import time
+
+from conv_net_classes import *
+np.set_printoptions(threshold=np.nan)
 warnings.filterwarnings("ignore")   
 
 #different non-linearities
@@ -32,7 +35,7 @@ def Tanh(x):
 def Iden(x):
     y = x
     return(y)
-
+       
 def train_conv_net(datasets,
                    U,
                    img_w=300, 
@@ -46,7 +49,9 @@ def train_conv_net(datasets,
                    conv_non_linear="relu",
                    activations=[Iden],
                    sqr_norm_lim=9,
-                   non_static=True):
+                   non_static=True,
+                   test_batch=1000,
+                   savename="predictions"):
     """
     Train a simple conv net
     img_h = sentence length (padded where necessary)
@@ -119,8 +124,7 @@ def train_conv_net(datasets,
     n_batches = new_data.shape[0]/batch_size
     n_train_batches = int(np.round(n_batches*0.9))
     #divide train set into train/val sets 
-    test_set_x = datasets[1][:,:img_h] 
-    test_set_y = np.asarray(datasets[1][:,-1],"int32")
+    #test_set_y = np.asarray(datasets[1][:,-1],"int32")
     train_set = new_data[:n_train_batches*batch_size,:]
     val_set = new_data[n_train_batches*batch_size:,:]     
     train_set_x, train_set_y = shared_dataset((train_set[:,:img_h],train_set[:,-1]))
@@ -143,17 +147,6 @@ def train_conv_net(datasets,
             x: train_set_x[index*batch_size:(index+1)*batch_size],
               y: train_set_y[index*batch_size:(index+1)*batch_size]},
                                   allow_input_downcast = True)     
-    test_pred_layers = []
-    test_size = test_set_x.shape[0]
-    test_layer0_input = Words[T.cast(x.flatten(),dtype="int32")].reshape((test_size,1,img_h,Words.shape[1]))
-    for conv_layer in conv_layers:
-        test_layer0_output = conv_layer.predict(test_layer0_input, test_size)
-        test_pred_layers.append(test_layer0_output.flatten(2))
-    test_layer1_input = T.concatenate(test_pred_layers, 1)
-    test_y_pred = classifier.predict(test_layer1_input)
-    test_error = T.mean(T.neq(test_y_pred, y))
-    test_model_all = theano.function([x,y], test_error, allow_input_downcast = True)   
-    
     #start training over mini-batches
     print '... training'
     epoch = 0
@@ -177,10 +170,42 @@ def train_conv_net(datasets,
         val_losses = [val_model(i) for i in xrange(n_val_batches)]
         val_perf = 1- np.mean(val_losses)                        
         print('epoch: %i, training time: %.2f secs, train perf: %.2f %%, val perf: %.2f %%' % (epoch, time.time()-start_time, train_perf * 100., val_perf*100.))
-        if val_perf >= best_val_perf:
-            best_val_perf = val_perf
-            test_loss = test_model_all(test_set_x,test_set_y)        
-            test_perf = 1- test_loss
+        #if val_perf >= best_val_perf:
+        #    best_val_perf = val_perf
+        #    test_loss = test_model_all(test_set_x,test_set_y)
+        #    test_perf = 1- test_loss
+
+
+    o = 0
+    test_predictions = []
+    test_predictions_p = []
+    len_test = datasets[1].shape[0]
+    print "Classifying from a test made up of", len_test, "sentences"
+    while o < len_test:
+        print "Classifying sentences from", o, "to", min(o+test_batch, len_test)
+        test_set_x = datasets[1][o:min(o+test_batch, len_test),:img_h]
+        test_size = test_set_x.shape[0]
+        test_layer0_input = Words[T.cast(x.flatten(),dtype="int32")].reshape((test_size,1,img_h,Words.shape[1]))
+        test_pred_layers = []
+        for conv_layer in conv_layers:
+            test_layer0_output = conv_layer.predict(test_layer0_input, test_size)
+            test_pred_layers.append(test_layer0_output.flatten(2))
+        test_layer1_input = T.concatenate(test_pred_layers, 1)
+        test_y_pred = classifier.predict(test_layer1_input)
+        test_y_pred_p = classifier.predict_p(test_layer1_input)
+        test_error = T.mean(T.neq(test_y_pred, y))
+        test_model_all = theano.function([x,y], test_error, allow_input_downcast = True)
+        predict_val = theano.function([x], test_y_pred, allow_input_downcast=True)
+        predict_p = theano.function([x], test_y_pred_p, allow_input_downcast=True)
+
+        test_predictions.append(predict_val(test_set_x))
+        test_predictions_p.append(predict_p(test_set_x))
+
+        o +=test_batch
+
+    cPickle.dump(test_predictions, open("%s.pkl"%savename, "wb"))
+    cPickle.dump(test_predictions_p, open("%s.pkl"%(savename+'_p'), "wb"))
+
     return test_perf
 
 def shared_dataset(data_xy, borrow=True):
@@ -275,18 +300,52 @@ def make_idx_data_cv(revs, word_idx_map, cv, max_l=51, k=300, filter_h=5):
     for rev in revs:
         sent = get_idx_from_sent(rev["text"], word_idx_map, max_l, k, filter_h)   
         sent.append(rev["y"])
-        if rev["split"]==cv:            
+        if rev["split"]==cv:
             test.append(sent)        
         else:  
-            train.append(sent)   
+            train.append(sent)
     train = np.array(train,dtype="int")
     test = np.array(test,dtype="int")
     return [train, test]     
-  
-   
-if __name__=="__main__":
+
+
+
+def make_idx_data_holdout(revs, word_idx_map, max_l=51, k=300, filter_h=5):
+    """
+    Transforms sentences into a 2-d matrix.
+    """
+    train, test = [], []
+    for rev in revs:
+        sent = get_idx_from_sent(rev["text"], word_idx_map, max_l, k, filter_h)
+        if rev["split"]=='test':
+            test.append(sent)
+        else:
+            train.append(sent)
+            sent.append(rev["y"])
+
+    train = np.array(train,dtype="int")
+    test = np.array(test,dtype="int")
+    return [train, test]
+
+
+
+def write_in_txt(data, data_p, filename='./test_data.txt'):
+     f = open(filename, 'wb')
+     p = cPickle.load(open(data))
+     pp = cPickle.load(open(data_p))
+
+     for v, vp in zip(p, pp):
+        for va, vap in zip(v, vp):
+            f.write(str(va)+ ' ' + str(vap) + '\n')
+     f.close()
+     del p
+     del pp
+
+
+if __name__ == "__main__":
+
     print "loading data...",
-    x = cPickle.load(open("mr.p","rb"))
+    x = cPickle.load(open("mr.pkl","rb"))
     revs, W, W2, word_idx_map, vocab = x[0], x[1], x[2], x[3], x[4]
     print "data loaded!"
     mode= sys.argv[1]
@@ -304,22 +363,23 @@ if __name__=="__main__":
     elif word_vectors=="-word2vec":
         print "using: word2vec vectors"
         U = W
+
     results = []
-    r = range(0,10)    
-    for i in r:
-        datasets = make_idx_data_cv(revs, word_idx_map, i, max_l=56,k=300, filter_h=5)
-        perf = train_conv_net(datasets,
-                              U,
-                              lr_decay=0.95,
-                              filter_hs=[3,4,5],
-                              conv_non_linear="relu",
-                              hidden_units=[100,2], 
-                              shuffle_batch=True, 
-                              n_epochs=25, 
-                              sqr_norm_lim=9,
-                              non_static=non_static,
-                              batch_size=50,
-                              dropout_rate=[0.5])
-        print "cv: " + str(i) + ", perf: " + str(perf)
-        results.append(perf)  
+    datasets = make_idx_data_holdout(revs, word_idx_map, max_l=46,k=300, filter_h=5)
+    perf = train_conv_net(datasets, U,
+                          lr_decay=0.95,
+                          filter_hs=[3,4,5],
+                          conv_non_linear="relu",
+                          hidden_units=[100,100,2],
+                          shuffle_batch=True,
+                          n_epochs=16,
+                          sqr_norm_lim=9,
+                          non_static=non_static,
+                          batch_size=128,
+                          dropout_rate=[0.5],
+                          test_batch=7000,
+                          savename="predictions")
+    print "perf: " + str(perf)
+    results.append(perf)
     print str(np.mean(results))
+    write_in_txt('predictions.pkl', 'predictions_p.pkl', 'train_tags_probs.txt')
