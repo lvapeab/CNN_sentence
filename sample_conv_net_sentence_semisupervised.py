@@ -343,30 +343,42 @@ def write_in_txt(data, data_p, filename='./test_data.txt'):
      del probabilities
 
 
-def process_prediction_probs(prediction_probs, n_intances_to_add, pool):
+def process_prediction_probs(prediction_probs, n_intances_to_add, pool_src, pool_trg):
     probs = numpy.array([], dtype="float32")
     for batch in prediction_probs:
         probs=numpy.append(probs,batch)
     probs = probs.reshape(-1, 2)
     top_positive_positions = probs.argsort(axis=0)[:, 0][:n_intances_to_add]
     top_negative_positions = probs.argsort(axis=0)[:, 1][:n_intances_to_add]
-    positive_lines = []
+    positive_lines_src = []
+    positive_lines_trg = []
     negative_lines = []
-    neutral_lines = []
-    pool_file = open(pool)
-    for i, line in enumerate(pool_file):
+    neutral_lines_src = []
+    neutral_lines_trg = []
+
+    pool_file_src = open(pool_src)
+    pool_file_trg = open(pool_trg)
+
+    for i, (line_src, line_trg)  in enumerate(zip (pool_file_src, pool_file_trg)):
         if i in top_negative_positions:
-            negative_lines.append(line)
+            negative_lines.append(line_src)
         elif i in top_positive_positions:
-            positive_lines.append(line)
+            positive_lines_src.append(line_src)
+            positive_lines_trg.append(line_trg)
+
         else:
-            neutral_lines.append(line)
-    pool_file.close()
-    return positive_lines, negative_lines, neutral_lines
+            neutral_lines_src.append(line_src)
+            neutral_lines_trg.append(line_trg)
+
+    pool_file_src.close()
+    pool_file_trg.close()
+
+    return positive_lines_src, positive_lines_trg, negative_lines, neutral_lines_src, neutral_lines_trg
 
 
-def semisupervised_selection(data_dir, initial_pos_filename, initial_neg_filename, initial_pool_filename, w2v_file,
-                             word_vectors="-rand", non_static=True, n_iter=10, test_batch=7000, instances_to_add=50000):
+def semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_neg_filename, initial_pool_filename, w2v_file,
+                             word_vectors="-rand", src_lan='en', trg_lan='de',
+                             non_static=True, n_iter=10, test_batch=7000, instances_to_add=50000):
 
     """
     Performs a semisupervised text selection over a pool of sentences based on initial positive/negative files.
@@ -387,23 +399,49 @@ def semisupervised_selection(data_dir, initial_pos_filename, initial_neg_filenam
     :param instances_to_add: Number of instances to add at each iteration
     :return:
     """
-    pos_filename = data_dir + '/' + initial_pos_filename
-    neg_filename = data_dir + '/' + initial_neg_filename
-    pool_filename = data_dir + '/' + initial_pool_filename
+    pos_filename_src = data_dir + '/' + initial_pos_filename + '.' + src_lan
+    in_domain_file = open(pos_filename_src, 'r')
+    in_domain = in_domain_file.readlines()
+    in_domain_file.close()
+    pos_filename_trg = data_dir + '/' + initial_pos_filename + '.' + trg_lan
+
+
+    neg_filename_src = data_dir + '/' + initial_neg_filename + '.' + src_lan
+    pool_filename_src = data_dir + '/' + initial_pool_filename + '.' + src_lan
+
+    pool_filename_trg = data_dir + '/' + initial_pool_filename + '.' + src_lan
 
     for i in range(n_iter):
 
         print "------------------ Starting iteration", i, "------------------"
-        new_pos_filename = data_dir + '/positive_' + str(i)
-        new_neg_filename = data_dir + '/negative_' + str(i)
-        new_pool_filename = data_dir + '/pool_' + str(i)
 
-        copyfile(pos_filename, new_pos_filename )
-        copyfile(neg_filename, new_neg_filename )
-        copyfile(pool_filename,new_pool_filename)
+        new_pos_filename_src = dest_dir + '/' + initial_pos_filename + '_' + str(i) + '.' + src_lan
+        new_pos_filename_trg = dest_dir + '/' + initial_pos_filename + '_' + str(i) + '.' + trg_lan
+        new_pos_filename_src_tmp = dest_dir + '/' + initial_pos_filename + 'tmp' + '.' + src_lan
+
+        new_neg_filename_src = dest_dir + '/' + initial_neg_filename + '_' +  str(i) + '.' + src_lan
+
+        new_pool_filename_src = dest_dir + '/' + initial_pool_filename + '_' + str(i) + '.' + src_lan
+        new_pool_filename_trg = dest_dir + '/' + initial_pool_filename + '_' + str(i) + '.' + trg_lan
 
 
-        x = process_data(w2v_file, new_pos_filename, new_neg_filename, new_pool_filename)
+
+        if i > 0:
+            copyfile(pos_filename_src, new_pos_filename_src_tmp)
+            copyfile(pos_filename_trg, new_pos_filename_trg)
+
+        with open(new_pos_filename_src_tmp, "a") as f:
+            for line in in_domain:
+                f.write(line)
+
+
+        copyfile(neg_filename_src, new_neg_filename_src)
+
+        copyfile(pool_filename_src,new_pool_filename_src)
+        copyfile(pool_filename_trg,new_pool_filename_trg)
+
+
+        x = process_data(w2v_file, new_pos_filename_src_tmp, new_neg_filename_src, new_pool_filename_src)
         revs, W, W2, word_idx_map, vocab = x[0], x[1], x[2], x[3], x[4]
 
         if word_vectors=="-rand":
@@ -415,46 +453,59 @@ def semisupervised_selection(data_dir, initial_pos_filename, initial_neg_filenam
         results = []
         datasets = make_idx_data_holdout(revs, word_idx_map, max_l=46,k=300, filter_h=5)
         perf, predictions, prediction_probs = train_conv_net(datasets, U, lr_decay=0.95, filter_hs=[3,4,5],
-                                                              conv_non_linear="relu", hidden_units=[100,100,2],
-                                                              shuffle_batch=True, n_epochs=16, sqr_norm_lim=9,
+                                                              conv_non_linear="relu", hidden_units=[200,100,2],
+                                                              shuffle_batch=True, n_epochs=14, sqr_norm_lim=9,
                                                               non_static=non_static, batch_size=128, dropout_rate=[0.5],
                                                               test_batch=test_batch, savename="predictions_"+str(i),
                                                              savetofile=False)
-        positive_lines, negative_lines, neutral_lines = process_prediction_probs(prediction_probs,
-                                                                                 instances_to_add,
-                                                                                 pool_filename)
+        positive_lines_src, positive_lines_trg, negative_lines, neutral_lines_src, neutral_lines_trg = \
+            process_prediction_probs(prediction_probs, instances_to_add, pool_filename_src, pool_filename_trg)
 
-
-        print "Adding", len(positive_lines), "positive lines"
+        print "Adding", len(positive_lines_src), "positive lines"
         print "Adding", len(negative_lines), "negative lines"
-        print "Adding", len(neutral_lines),  "neutral lines"
+        print "Adding", len(neutral_lines_src), "neutral lines"
 
-        new_pos_file = open(new_pos_filename, 'a')
-        new_neg_file = open(new_neg_filename, 'a')
-        new_pool_file = open(new_pool_filename, 'w')
+        new_pos_file_src = open(new_pos_filename_src, 'a')
+        new_pos_file_trg = open(new_pos_filename_trg, 'a')
 
-        for line in positive_lines:
-            new_pos_file.write(line)
+        new_neg_file = open(new_neg_filename_src, 'a')
+
+        new_pool_file_src = open(new_pool_filename_src, 'w')
+        new_pool_file_trg = open(new_pool_filename_trg, 'w')
+
+        for line in positive_lines_src:
+            new_pos_file_src.write(line)
+        for line in positive_lines_trg:
+            new_pos_file_trg.write(line)
+
         for line in negative_lines:
             new_neg_file.write(line)
-        for line in neutral_lines:
-            new_pool_file.write(line)
 
-        new_pos_file.close()
+        for line in neutral_lines_src:
+            new_pool_file_src.write(line)
+        for line in neutral_lines_trg:
+            new_pool_file_trg.write(line)
+
+        new_pos_file_src.close()
+        new_pos_file_trg.close()
+
         new_neg_file.close()
-        new_pool_file.close()
-        pos_filename = new_pos_filename
-        neg_filename = new_neg_filename
-        pool_filename =new_pool_filename
 
+        new_pool_file_src.close()
+        new_pool_file_trg.close()
+
+        pos_filename_src = new_pos_filename_src
+        pos_filename_trg = new_pos_filename_trg
+
+        neg_filename_src = new_neg_filename_src
+
+        pool_filename_src =new_pool_filename_src
+        pool_filename_trg = new_pool_filename_trg
 
         print "perf: " + str(perf)
         results.append(perf)
         print str(np.mean(results))
         #write_in_txt("predictions_"+str(i), "predictions_"+str(i), 'train_tags_probs' + str(i) + '.txt')
-
-
-
 
 if __name__ == "__main__":
 
@@ -470,12 +521,16 @@ if __name__ == "__main__":
 
 
     data_dir = 'data'
-    initial_pos_filename = 'test_positivo.en'
-    initial_neg_filename = 'test_negativo.en'
-    initial_pool_filename= 'training.en'
+    dest_dir = 'data/selection'
+    initial_pos_filename = 'test_positivo'
+    initial_neg_filename = 'test_negativo'
+    initial_pool_filename= 'training'
+    src_lan = 'en'
+    trg_lan = 'de'
+
     w2v_file = data_dir+'/GoogleNews-vectors-negative300.bin'
-    semisupervised_selection(data_dir, initial_pos_filename, initial_neg_filename, initial_pool_filename, w2v_file,
+    semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_neg_filename, initial_pool_filename, w2v_file,
                              word_vectors=word_vectors, non_static=non_static, n_iter=10,
-                             test_batch=7000, instances_to_add=5000)
+                             test_batch=10000, instances_to_add=40000)
 
 
