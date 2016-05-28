@@ -16,12 +16,23 @@ import theano.tensor as T
 import re
 import warnings
 import sys
+import os
 import time
 from shutil import copyfile
 from process_data import process_data
 from conv_net_classes import *
-np.set_printoptions(threshold=np.nan)
-warnings.filterwarnings("ignore")   
+
+
+warnings.filterwarnings("ignore")
+
+
+def create_dir_if_not_exists(directory):
+    if not os.path.exists(directory):
+        print 'creating directory %s'%directory
+        os.makedirs(directory)
+    else:
+        print "%s already exists!"%directory
+
 
 #different non-linearities
 def ReLU(x):
@@ -365,7 +376,6 @@ def process_prediction_probs(prediction_probs, n_intances_to_add, pool_src, pool
         elif i in top_positive_positions:
             positive_lines_src.append(line_src)
             positive_lines_trg.append(line_trg)
-
         else:
             neutral_lines_src.append(line_src)
             neutral_lines_trg.append(line_trg)
@@ -407,9 +417,9 @@ def semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_n
 
 
     neg_filename_src = data_dir + '/' + initial_neg_filename + '.' + src_lan
-    pool_filename_src = data_dir + '/' + initial_pool_filename + '.' + src_lan
 
-    pool_filename_trg = data_dir + '/' + initial_pool_filename + '.' + src_lan
+    pool_filename_src = data_dir + '/' + initial_pool_filename + '.' + src_lan
+    pool_filename_trg = data_dir + '/' + initial_pool_filename + '.' + trg_lan
 
     for i in range(n_iter):
 
@@ -456,14 +466,18 @@ def semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_n
                                                               conv_non_linear="relu", hidden_units=[200,100,2],
                                                               shuffle_batch=True, n_epochs=14, sqr_norm_lim=9,
                                                               non_static=non_static, batch_size=128, dropout_rate=[0.5],
-                                                              test_batch=test_batch, savename="predictions_"+str(i),
+                                                              test_batch=test_batch, savename="predictions_" + str(i),
                                                              savetofile=False)
         positive_lines_src, positive_lines_trg, negative_lines, neutral_lines_src, neutral_lines_trg = \
             process_prediction_probs(prediction_probs, instances_to_add, pool_filename_src, pool_filename_trg)
 
         print "Adding", len(positive_lines_src), "positive lines"
+        print "Positive sample:", positive_lines_src[0], "---", positive_lines_trg[0]
         print "Adding", len(negative_lines), "negative lines"
+        print "Negative sample:", negative_lines[0]
+
         print "Adding", len(neutral_lines_src), "neutral lines"
+        print "Neutral sample:", neutral_lines_src[0], "---", neutral_lines_trg[0]
 
         new_pos_file_src = open(new_pos_filename_src, 'a')
         new_pos_file_trg = open(new_pos_filename_trg, 'a')
@@ -499,7 +513,7 @@ def semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_n
 
         neg_filename_src = new_neg_filename_src
 
-        pool_filename_src =new_pool_filename_src
+        pool_filename_src = new_pool_filename_src
         pool_filename_trg = new_pool_filename_trg
 
         print "perf: " + str(perf)
@@ -520,17 +534,17 @@ if __name__ == "__main__":
     execfile("conv_net_classes.py")
 
 
-    data_dir = 'data'
-    dest_dir = 'data/selection'
+    data_dir = 'data/Euro-en-de'
+    dest_dir = 'data/selection/europarl_ende'
     initial_pos_filename = 'test_positivo'
     initial_neg_filename = 'test_negativo'
     initial_pool_filename= 'training'
     src_lan = 'en'
     trg_lan = 'de'
-
-    w2v_file = data_dir+'/GoogleNews-vectors-negative300.bin'
-    semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_neg_filename, initial_pool_filename, w2v_file,
-                             word_vectors=word_vectors, non_static=non_static, n_iter=10,
-                             test_batch=10000, instances_to_add=40000)
+    create_dir_if_not_exists(dest_dir)
+    w2v_file = data_dir+'/../GoogleNews-vectors-negative300.bin'
+    semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_neg_filename, initial_pool_filename,
+                             w2v_file, word_vectors=word_vectors, non_static=non_static, n_iter=15,
+                             test_batch=5000, instances_to_add=100000)
 
 
