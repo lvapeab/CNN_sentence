@@ -8,12 +8,12 @@ Much of the code is modified from
 - https://github.com/mdenil/dropout (for dropout)
 - https://groups.google.com/forum/#!topic/pylearn-dev/3QbKtCumAW4 (for Adadelta)
 """
+
 import cPickle
 import numpy as np
-from collections import defaultdict, OrderedDict
+from collections import OrderedDict
 import theano
 import theano.tensor as T
-import re
 import warnings
 import sys
 import os
@@ -34,46 +34,43 @@ def create_dir_if_not_exists(directory):
         print "%s already exists!"%directory
 
 
-#different non-linearities
+# different non-linearities
+
+
 def ReLU(x):
     y = T.maximum(0.0, x)
-    return(y)
+    return y
+
+
 def Sigmoid(x):
     y = T.nnet.sigmoid(x)
-    return(y)
+    return y
+
+
 def Tanh(x):
     y = T.tanh(x)
-    return(y)
+    return y
+
+
 def Iden(x):
     y = x
-    return(y)
-       
-def train_conv_net(datasets,
-                   U,
-                   img_w=300, 
-                   filter_hs=[3,4,5],
-                   hidden_units=[100,2], 
-                   dropout_rate=[0.5],
-                   shuffle_batch=True,
-                   n_epochs=25, 
-                   batch_size=50, 
-                   lr_decay = 0.95,
-                   conv_non_linear="relu",
-                   activations=[Iden],
-                   sqr_norm_lim=9,
-                   non_static=True,
-                   test_batch=1000,
-                   savename="predictions",
+    return y
+
+
+def train_conv_net(datasets, U, img_w=300, filter_hs=[3, 4, 5], hidden_units=[100, 2], dropout_rate=[0.5],
+                   shuffle_batch=True, n_epochs=25, batch_size=50, lr_decay = 0.95, conv_non_linear="relu",
+                   activations=[Iden], sqr_norm_lim=9, non_static=True, test_batch=1000, savename="predictions",
                    savetofile=False):
     """
     Train a simple conv net
-    img_h = sentence length (padded where necessary)
-    img_w = word vector length (300 for word2vec)
-    filter_hs = filter window sizes    
-    hidden_units = [x,y] x is the number of feature maps (per filter window), and y is the penultimate layer
-    sqr_norm_lim = s^2 in the paper
-    lr_decay = adadelta decay parameter
-    """    
+    :param img_h = sentence length (padded where necessary)
+    :param img_w = word vector length (300 for word2vec)
+    :param filter_hs = filter window sizes
+    :param hidden_units = [x,y] x is the number of feature maps (per filter window), and y is the penultimate layer
+    :param sqr_norm_lim = s^2 in the paper
+    :param lr_decay = adadelta decay parameter
+    """
+
     rng = np.random.RandomState(3435)
     img_h = len(datasets[0][0])-1  
     filter_w = img_w    
@@ -183,10 +180,6 @@ def train_conv_net(datasets,
         val_losses = [val_model(i) for i in xrange(n_val_batches)]
         val_perf = 1- np.mean(val_losses)                        
         print('epoch: %i, training time: %.2f secs, train perf: %.2f %%, val perf: %.2f %%' % (epoch, time.time()-start_time, train_perf * 100., val_perf*100.))
-        #if val_perf >= best_val_perf:
-        #    best_val_perf = val_perf
-        #    test_loss = test_model_all(test_set_x,test_set_y)
-        #    test_perf = 1- test_loss
 
 
     o = 0
@@ -220,6 +213,7 @@ def train_conv_net(datasets,
         cPickle.dump(test_predictions_p, open("%s.pkl"%(savename+'_p'), "wb"))
     return test_perf, test_predictions, test_predictions_p
 
+
 def shared_dataset(data_xy, borrow=True):
         """ Function that loads the dataset into shared variables
 
@@ -237,6 +231,7 @@ def shared_dataset(data_xy, borrow=True):
                                                dtype=theano.config.floatX),
                                  borrow=borrow)
         return shared_x, T.cast(shared_y, 'int32')
+
         
 def sgd_updates_adadelta(params,cost,rho=0.95,epsilon=1e-6,norm_lim=9,word_vec_name='Words'):
     """
@@ -268,7 +263,8 @@ def sgd_updates_adadelta(params,cost,rho=0.95,epsilon=1e-6,norm_lim=9,word_vec_n
             updates[param] = stepped_param * scale
         else:
             updates[param] = stepped_param      
-    return updates 
+    return updates
+
 
 def as_floatX(variable):
     if isinstance(variable, float):
@@ -277,7 +273,8 @@ def as_floatX(variable):
     if isinstance(variable, np.ndarray):
         return np.cast[theano.config.floatX](variable)
     return theano.tensor.cast(variable, theano.config.floatX)
-    
+
+
 def safe_update(dict_to, dict_from):
     """
     re-make update dictionary for safe updating
@@ -287,7 +284,8 @@ def safe_update(dict_to, dict_from):
             raise KeyError(key)
         dict_to[key] = val
     return dict_to
-    
+
+
 def get_idx_from_sent(sent, word_idx_map, max_l=51, k=300, filter_h=5):
     """
     Transforms sentence into a list of indices. Pad with zeroes.
@@ -303,6 +301,7 @@ def get_idx_from_sent(sent, word_idx_map, max_l=51, k=300, filter_h=5):
     while len(x) < max_l+2*pad:
         x.append(0)
     return x
+
 
 def make_idx_data_cv(revs, word_idx_map, cv, max_l=51, k=300, filter_h=5):
     """
@@ -321,7 +320,6 @@ def make_idx_data_cv(revs, word_idx_map, cv, max_l=51, k=300, filter_h=5):
     return [train, test]     
 
 
-
 def make_idx_data_holdout(revs, word_idx_map, max_l=51, k=300, filter_h=5):
     """
     Transforms sentences into a 2-d matrix.
@@ -338,7 +336,6 @@ def make_idx_data_holdout(revs, word_idx_map, max_l=51, k=300, filter_h=5):
     train = np.array(train,dtype="int")
     test = np.array(test,dtype="int")
     return [train, test]
-
 
 
 def write_in_txt(data, data_p, filename='./test_data.txt'):
@@ -434,22 +431,18 @@ def semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_n
         new_pool_filename_src = dest_dir + '/' + initial_pool_filename + '_' + str(i) + '.' + src_lan
         new_pool_filename_trg = dest_dir + '/' + initial_pool_filename + '_' + str(i) + '.' + trg_lan
 
-
-
         if i > 0:
             copyfile(pos_filename_src, new_pos_filename_src_tmp)
+            copyfile(pos_filename_src, new_pos_filename_src)
             copyfile(pos_filename_trg, new_pos_filename_trg)
 
         with open(new_pos_filename_src_tmp, "a") as f:
             for line in in_domain:
                 f.write(line)
 
-
         copyfile(neg_filename_src, new_neg_filename_src)
-
-        copyfile(pool_filename_src,new_pool_filename_src)
-        copyfile(pool_filename_trg,new_pool_filename_trg)
-
+        copyfile(pool_filename_src, new_pool_filename_src)
+        copyfile(pool_filename_trg, new_pool_filename_trg)
 
         x = process_data(w2v_file, new_pos_filename_src_tmp, new_neg_filename_src, new_pool_filename_src)
         revs, W, W2, word_idx_map, vocab = x[0], x[1], x[2], x[3], x[4]
@@ -460,6 +453,9 @@ def semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_n
         elif word_vectors=="-word2vec":
             print "using: word2vec vectors"
             U = W
+        else:
+            raise NotImplementedError, "Choose between -rand or -word2vec options"
+
         results = []
         datasets = make_idx_data_holdout(revs, word_idx_map, max_l=46,k=300, filter_h=5)
         perf, predictions, prediction_probs = train_conv_net(datasets, U, lr_decay=0.95, filter_hs=[3,4,5],
@@ -520,6 +516,7 @@ def semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_n
         results.append(perf)
         print str(np.mean(results))
         #write_in_txt("predictions_"+str(i), "predictions_"+str(i), 'train_tags_probs' + str(i) + '.txt')
+
 
 if __name__ == "__main__":
 
