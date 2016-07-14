@@ -18,7 +18,7 @@ import warnings
 import sys
 import os
 import time
-from shutil import copyfile
+from shutil import copyfile, rmtree
 from process_data import process_data
 from conv_net_classes import *
 
@@ -33,6 +33,11 @@ def create_dir_if_not_exists(directory):
     else:
         print "%s already exists!"%directory
 
+
+def remove_dir(directory):
+    if os.path.exists(directory):
+        print 'removing directory %s'%directory
+        rmtree(directory)
 
 # different non-linearities
 
@@ -286,7 +291,7 @@ def safe_update(dict_to, dict_from):
     return dict_to
 
 
-def get_idx_from_sent(sent, word_idx_map, max_l=51, k=300, filter_h=5):
+def get_idx_from_sent(sent, word_idx_map, max_l=70, k=300, filter_h=5):
     """
     Transforms sentence into a list of indices. Pad with zeroes.
     """
@@ -303,7 +308,7 @@ def get_idx_from_sent(sent, word_idx_map, max_l=51, k=300, filter_h=5):
     return x
 
 
-def make_idx_data_cv(revs, word_idx_map, cv, max_l=51, k=300, filter_h=5):
+def make_idx_data_cv(revs, word_idx_map, cv, max_l=70, k=300, filter_h=5):
     """
     Transforms sentences into a 2-d matrix.
     """
@@ -320,21 +325,30 @@ def make_idx_data_cv(revs, word_idx_map, cv, max_l=51, k=300, filter_h=5):
     return [train, test]     
 
 
-def make_idx_data_holdout(revs, word_idx_map, max_l=51, k=300, filter_h=5):
+def make_idx_data_holdout(revs, word_idx_map, max_l=70, k=300, filter_h=5):
     """
     Transforms sentences into a 2-d matrix.
     """
     train, test = [], []
+    added_train = 0
+    added_test = 0
     for rev in revs:
         sent = get_idx_from_sent(rev["text"], word_idx_map, max_l, k, filter_h)
         if rev["split"]=='test':
             test.append(sent)
+            added_test +=1
         else:
             train.append(sent)
             sent.append(rev["y"])
+            added_train +=1
+    print "ADded train:", added_train
+    print "Added test:", added_test
 
-    train = np.array(train,dtype="int")
-    test = np.array(test,dtype="int")
+    print "ADding train stuff"
+    train = np.array(train, dtype="int")
+    print "ADding test stuff"
+
+    test = np.array(test, dtype="int")
     return [train, test]
 
 
@@ -412,7 +426,6 @@ def semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_n
     in_domain_file.close()
     pos_filename_trg = data_dir + '/' + initial_pos_filename + '.' + trg_lan
 
-
     neg_filename_src = data_dir + '/' + initial_neg_filename + '.' + src_lan
 
     pool_filename_src = data_dir + '/' + initial_pool_filename + '.' + src_lan
@@ -457,7 +470,7 @@ def semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_n
             raise NotImplementedError, "Choose between -rand or -word2vec options"
 
         results = []
-        datasets = make_idx_data_holdout(revs, word_idx_map, max_l=46,k=300, filter_h=5)
+        datasets = make_idx_data_holdout(revs, word_idx_map, max_l=70,k=300, filter_h=5)
         perf, predictions, prediction_probs = train_conv_net(datasets, U, lr_decay=0.95, filter_hs=[3,4,5],
                                                               conv_non_linear="relu", hidden_units=[200,100,2],
                                                               shuffle_batch=True, n_epochs=14, sqr_norm_lim=9,
@@ -530,18 +543,22 @@ if __name__ == "__main__":
         non_static=False
     execfile("conv_net_classes.py")
 
-
-    data_dir = 'data/Euro-en-de'
-    dest_dir = 'data/selection/europarl_ende'
+    data_dir = 'data/Indomain'
     initial_pos_filename = 'test_positivo'
     initial_neg_filename = 'test_negativo'
-    initial_pool_filename= 'training'
+    initial_pool_filename= 'europarl-v7.fr-en.lowercase'
     src_lan = 'en'
-    trg_lan = 'de'
-    create_dir_if_not_exists(dest_dir)
+    trg_lan = 'fr'
+    dest_dir = 'data/selection/europarl_indomain_2_' + src_lan + trg_lan
+
+    reload = False
+    if not reload:
+        remove_dir(dest_dir)
+        create_dir_if_not_exists(dest_dir)
+
     w2v_file = data_dir+'/../GoogleNews-vectors-negative300.bin'
     semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_neg_filename, initial_pool_filename,
                              w2v_file, word_vectors=word_vectors, non_static=non_static, n_iter=15,
-                             test_batch=5000, instances_to_add=100000)
+                             src_lan=src_lan, trg_lan=trg_lan, test_batch=5000, instances_to_add=10000)
 
 

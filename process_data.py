@@ -16,6 +16,7 @@ def build_data_hold_out(pos_file, neg_file, pool_file, clean_string=True):
     test_file = pool_file
     vocab = defaultdict(float)
     with open(pos_file, "rb") as f:
+        nsents = 0
         for line in f:
             rev = []
             rev.append(line.strip())
@@ -31,7 +32,10 @@ def build_data_hold_out(pos_file, neg_file, pool_file, clean_string=True):
                       "num_words": len(orig_rev.split()),
                       "split": 'train'}
             revs.append(datum)
+            nsents += 1
+        print pos_file,"contained", nsents, "sentences"
     with open(neg_file, "rb") as f:
+        nsents = 0
         for line in f:
             rev = []
             rev.append(line.strip())
@@ -47,8 +51,12 @@ def build_data_hold_out(pos_file, neg_file, pool_file, clean_string=True):
                       "num_words": len(orig_rev.split()),
                       "split": 'train'}
             revs.append(datum)
+            nsents += 1
+
+        print neg_file, "contained", nsents, "sentences"
 
     with open(test_file, "rb") as f:
+        nsents = 0
         for line in f:
             rev = []
             rev.append(line.strip())
@@ -63,6 +71,9 @@ def build_data_hold_out(pos_file, neg_file, pool_file, clean_string=True):
                       "num_words": len(orig_rev.split()),
                       "split": 'test'}
             revs.append(datum)
+            nsents += 1
+
+        print test_file,"contained", nsents, "sentences"
 
     return revs, vocab
 
@@ -186,18 +197,21 @@ def clean_str_sst(string):
     string = re.sub(r"\s{2,}", " ", string)    
     return string.strip().lower()
 
-def process_data(w2v_file,  pos_file, neg_file, pool_file, outfile=None):
-    print "loading data...",
+def process_data(w2v_file, pos_file, neg_file, pool_file, outfile=None):
+    print "loading data..."
+    print "\t Positive file:", pos_file
+    print "\t Negative file:", neg_file
+    print "\t Pool file:", pool_file
     revs, vocab = build_data_hold_out(pos_file, neg_file, pool_file, clean_string=True)
     max_l = np.max(pd.DataFrame(revs)["num_words"])
-    print "data loaded!"
-    print "number of sentences: " + str(len(revs))
-    print "vocab size: " + str(len(vocab))
-    print "max sentence length: " + str(max_l)
-    print "loading word2vec vectors...",
+    print "Data loaded!"
+    print "Total number of sentences: " + str(len(revs))
+    print "Vocab size: " + str(len(vocab))
+    print "Max sentence length: " + str(max_l)
+    print "Loading word2vec vectors...",
     w2v = load_bin_vec(w2v_file, vocab)
-    print "word2vec loaded!"
-    print "num words already in word2vec: " + str(len(w2v))
+    print "Word2vec loaded!"
+    print "Num words already in word2vec: " + str(len(w2v))
     add_unknown_words(w2v, vocab)
     W, word_idx_map = get_W(w2v)
     rand_vecs = {}
