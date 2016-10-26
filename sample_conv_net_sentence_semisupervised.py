@@ -381,7 +381,7 @@ def process_prediction_probs(prediction_probs, n_intances_to_add, pool_src, pool
     pool_file_src = open(pool_src)
     pool_file_trg = open(pool_trg)
 
-    for i, (line_src, line_trg)  in enumerate(zip (pool_file_src, pool_file_trg)):
+    for i, (line_src, line_trg) in enumerate(zip (pool_file_src, pool_file_trg)):
         if i in top_negative_positions:
             negative_lines.append(line_src)
         elif i in top_positive_positions:
@@ -543,13 +543,13 @@ if __name__ == "__main__":
         non_static=False
     execfile("conv_net_classes.py")
 
-    data_dir = 'data/Indomain'
+    data_dir = 'data/Emea-en-fr'
     initial_pos_filename = 'test_positivo'
     initial_neg_filename = 'test_negativo'
-    initial_pool_filename= 'europarl-v7.fr-en.lowercase'
+    initial_pool_filename= 'training_test'
     src_lan = 'en'
     trg_lan = 'fr'
-    dest_dir = 'data/selection/europarl_indomain_2_' + src_lan + trg_lan
+    dest_dir = 'data/selection/Emea-en-fr_test_' + src_lan + trg_lan
 
     reload = False
     if not reload:
@@ -559,6 +559,6 @@ if __name__ == "__main__":
     w2v_file = data_dir+'/../GoogleNews-vectors-negative300.bin'
     semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_neg_filename, initial_pool_filename,
                              w2v_file, word_vectors=word_vectors, non_static=non_static, n_iter=15,
-                             src_lan=src_lan, trg_lan=trg_lan, test_batch=5000, instances_to_add=10000)
+                             src_lan=src_lan, trg_lan=trg_lan, test_batch=5000, instances_to_add=1500)
 
 
