@@ -223,6 +223,7 @@ def process_data(w2v_file, pos_file, neg_file, pool_file, outfile=None):
         return revs, W, W2, word_idx_map, vocab
 if __name__=="__main__":
     w2v_file = sys.argv[1]
-    data_folder = ["data/test.en","data/test_negativo.en", "data/training.en"]
-    outfile = "mr.pkl"
+    data_root = '/media/HDD_2TB/DATASETS/cnn_polarity/'
+    data_folder = [data_root + 'data/test.en', data_root + 'data/test_negativo.en', data_root  + 'data/training.en']
+    outfile = 'mr.pkl'
     process_data(w2v_file, data_folder, outfile)
