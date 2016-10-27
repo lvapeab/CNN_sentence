@@ -398,8 +398,8 @@ def process_prediction_probs(prediction_probs, n_intances_to_add, pool_src, pool
 
 
 def semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_neg_filename, initial_pool_filename, w2v_file,
-                             word_vectors="-rand", src_lan='en', trg_lan='de',
-                             non_static=True, n_iter=10, test_batch=7000, instances_to_add=50000):
+                             word_vectors="-rand", src_lan='en', trg_lan='de', non_static=True, n_iter=10,
+                             test_batch=7000, instances_to_add=50000, debug=False):
 
     """
     Performs a semisupervised text selection over a pool of sentences based on initial positive/negative files.
@@ -434,10 +434,12 @@ def semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_n
     for i in range(n_iter):
 
         print "------------------ Starting iteration", i, "------------------"
-
         new_pos_filename_src = dest_dir + '/' + initial_pos_filename + '_' + str(i) + '.' + src_lan
         new_pos_filename_trg = dest_dir + '/' + initial_pos_filename + '_' + str(i) + '.' + trg_lan
+
         new_pos_filename_src_tmp = dest_dir + '/' + initial_pos_filename + 'tmp' + '.' + src_lan
+        if debug:
+            new_neg_filename_src_tmp = dest_dir + '/' + initial_neg_filename + 'tmp' + '.' + src_lan
 
         new_neg_filename_src = dest_dir + '/' + initial_neg_filename + '_' +  str(i) + '.' + src_lan
 
@@ -492,6 +494,8 @@ def semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_n
         new_pos_file_trg = open(new_pos_filename_trg, 'a')
 
         new_neg_file = open(new_neg_filename_src, 'a')
+        if debug:
+            new_neg_file_tmp = open(new_neg_filename_src_tmp, 'a')
 
         new_pool_file_src = open(new_pool_filename_src, 'w')
         new_pool_file_trg = open(new_pool_filename_trg, 'w')
@@ -503,7 +507,8 @@ def semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_n
 
         for line in negative_lines:
             new_neg_file.write(line)
-
+            if debug:
+                new_neg_file_tmp.write(line)
         for line in neutral_lines_src:
             new_pool_file_src.write(line)
         for line in neutral_lines_trg:
@@ -516,6 +521,9 @@ def semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_n
 
         new_pool_file_src.close()
         new_pool_file_trg.close()
+
+        if debug:
+            new_neg_file_tmp.close()
 
         pos_filename_src = new_pos_filename_src
         pos_filename_trg = new_pos_filename_trg
@@ -543,22 +551,23 @@ if __name__ == "__main__":
         non_static=False
     execfile("conv_net_classes.py")
 
-    data_dir = 'data/Emea-en-fr'
+    data_root = '/media/HDD_2TB/DATASETS/cnn_polarity/'
+    data_dir = data_root + 'DATA/Emea-en-fr'
     initial_pos_filename = 'test_positivo'
     initial_neg_filename = 'test_negativo'
     initial_pool_filename= 'training_test'
     src_lan = 'en'
     trg_lan = 'fr'
-    dest_dir = 'data/selection/Emea-en-fr_test_' + src_lan + trg_lan
+    dest_dir = data_root + 'selection/Emea-en-fr_test_' + src_lan + trg_lan
 
     reload = False
     if not reload:
         remove_dir(dest_dir)
         create_dir_if_not_exists(dest_dir)
 
-    w2v_file = data_dir+'/../GoogleNews-vectors-negative300.bin'
+    w2v_file = data_root + 'DATA/GoogleNews-vectors-negative300.bin'
     semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_neg_filename, initial_pool_filename,
-                             w2v_file, word_vectors=word_vectors, non_static=non_static, n_iter=15,
-                             src_lan=src_lan, trg_lan=trg_lan, test_batch=5000, instances_to_add=1500)
+                             w2v_file, word_vectors=word_vectors, non_static=non_static, n_iter=10,
+                             src_lan=src_lan, trg_lan=trg_lan, test_batch=5000, instances_to_add=1500, debug=True)
 
 
