@@ -439,7 +439,7 @@ def semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_n
 
         new_pos_filename_src_tmp = dest_dir + '/' + initial_pos_filename + 'tmp' + '.' + src_lan
         if debug:
-            new_neg_filename_src_tmp = dest_dir + '/' + initial_neg_filename + 'tmp' + '.' + src_lan
+            new_neg_filename_src_tmp = dest_dir + '/' + initial_neg_filename + 'tmp' + '_' + str(i) + '.' + src_lan
 
         new_neg_filename_src = dest_dir + '/' + initial_neg_filename + '_' +  str(i) + '.' + src_lan
 
@@ -552,13 +552,13 @@ if __name__ == "__main__":
     execfile("conv_net_classes.py")
 
     data_root = '/media/HDD_2TB/DATASETS/cnn_polarity/'
-    data_dir = data_root + 'DATA/Emea-en-fr'
-    initial_pos_filename = 'test_positivo'
-    initial_neg_filename = 'test_negativo'
-    initial_pool_filename= 'training_test'
+    data_dir = data_root + 'DATA/EMEA_Training'
+    initial_pos_filename = 'EMEA.en-fr.Sin-repetidas'
+    initial_neg_filename = 'europarl'
+    initial_pool_filename= 'europarl_pool'
     src_lan = 'en'
-    trg_lan = 'fr'
-    dest_dir = data_root + 'selection/Emea-en-fr_test_' + src_lan + trg_lan
+    trg_lan = 'en'
+    dest_dir = data_root + 'selection/Emea-en-fr_train_' + src_lan + trg_lan
 
     reload = False
     if not reload:
@@ -568,6 +568,6 @@ if __name__ == "__main__":
     w2v_file = data_root + 'DATA/GoogleNews-vectors-negative300.bin'
     semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_neg_filename, initial_pool_filename,
                              w2v_file, word_vectors=word_vectors, non_static=non_static, n_iter=10,
-                             src_lan=src_lan, trg_lan=trg_lan, test_batch=5000, instances_to_add=1500, debug=True)
+                             src_lan=src_lan, trg_lan=trg_lan, test_batch=5000, instances_to_add=50000, debug=True)
 
 
