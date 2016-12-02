@@ -121,7 +121,7 @@ def build_data_cv(data_folder, cv=10, clean_string=True):
             revs.append(datum)
     return revs, vocab
     
-def get_W(word_vecs, k=300):
+def get_W(word_vecs, k):
     """
     Get word matrix. W[i] is the vector for word indexed by i
     """
@@ -160,7 +160,7 @@ def load_bin_vec(fname, vocab):
                 f.read(binary_len)
     return word_vecs
 
-def add_unknown_words(word_vecs, vocab, min_df=1, k=300):
+def add_unknown_words(word_vecs, vocab, k, min_df=1):
     """
     For words that occur in at least min_df documents, create a separate word vector.    
     0.25 is chosen so the unknown vectors have (approximately) same variance as pre-trained ones
@@ -197,7 +197,7 @@ def clean_str_sst(string):
     string = re.sub(r"\s{2,}", " ", string)    
     return string.strip().lower()
 
-def process_data(w2v_file, pos_file, neg_file, pool_file, outfile=None):
+def process_data(w2v_file, pos_file, neg_file, pool_file, outfile=None, k=300):
     print "loading data..."
     print "\t Positive file:", pos_file
     print "\t Negative file:", neg_file
@@ -212,11 +212,13 @@ def process_data(w2v_file, pos_file, neg_file, pool_file, outfile=None):
     w2v = load_bin_vec(w2v_file, vocab)
     print "Word2vec loaded!"
     print "Num words already in word2vec: " + str(len(w2v))
-    add_unknown_words(w2v, vocab)
-    W, word_idx_map = get_W(w2v)
+    add_unknown_words(w2v, vocab, k)
+    print "Getting word matrix (known words)"
+    W, word_idx_map = get_W(w2v, k)
     rand_vecs = {}
-    add_unknown_words(rand_vecs, vocab)
-    W2, _ = get_W(rand_vecs)
+    print "Getting word matrix (unknown words)"
+    add_unknown_words(rand_vecs, vocab, k)
+    W2, _ = get_W(rand_vecs, k)
     if outfile:
         cPickle.dump([revs, W, W2, word_idx_map, vocab], open(outfile, "wb"))
     else:

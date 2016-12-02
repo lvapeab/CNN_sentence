@@ -184,8 +184,10 @@ def train_conv_net(datasets, U, img_w=300, filter_hs=[3, 4, 5], hidden_units=[10
         train_perf = 1 - np.mean(train_losses)
         val_losses = [val_model(i) for i in xrange(n_val_batches)]
         val_perf = 1- np.mean(val_losses)                        
-        print('epoch: %i, training time: %.2f secs, train perf: %.2f %%, val perf: %.2f %%' % (epoch, time.time()-start_time, train_perf * 100., val_perf*100.))
-
+        print('epoch: %i, training time: %.2f secs,'
+          ' train perf (1-train_loss)*100: %.2f %%, '
+          'val perf (1-train_loss)*100: %.2f %%' % (
+          epoch, time.time() - start_time, train_perf * 100., val_perf * 100.))
 
     o = 0
     test_predictions = []
@@ -398,7 +400,7 @@ def process_prediction_probs(prediction_probs, n_intances_to_add, pool_src, pool
 
 
 def semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_neg_filename, initial_pool_filename, w2v_file,
-                             word_vectors="-rand", src_lan='en', trg_lan='de', non_static=True, n_iter=10,
+                             word_vectors="-rand", src_lan='en', trg_lan='de', non_static=True, n_iter=10, max_l=50, k=300,
                              test_batch=7000, instances_to_add=50000, debug=False):
 
     """
@@ -459,7 +461,7 @@ def semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_n
         copyfile(pool_filename_src, new_pool_filename_src)
         copyfile(pool_filename_trg, new_pool_filename_trg)
 
-        x = process_data(w2v_file, new_pos_filename_src_tmp, new_neg_filename_src, new_pool_filename_src)
+        x = process_data(w2v_file, new_pos_filename_src_tmp, new_neg_filename_src, new_pool_filename_src, k=k)
         revs, W, W2, word_idx_map, vocab = x[0], x[1], x[2], x[3], x[4]
 
         if word_vectors=="-rand":
@@ -472,8 +474,8 @@ def semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_n
             raise NotImplementedError, "Choose between -rand or -word2vec options"
 
         results = []
-        datasets = make_idx_data_holdout(revs, word_idx_map, max_l=70,k=300, filter_h=5)
-        perf, predictions, prediction_probs = train_conv_net(datasets, U, lr_decay=0.95, filter_hs=[3,4,5],
+        datasets = make_idx_data_holdout(revs, word_idx_map, max_l=max_l,k=k, filter_h=5)
+        perf, predictions, prediction_probs = train_conv_net(datasets, U, img_w=k, lr_decay=0.95, filter_hs=[3,4,5],
                                                               conv_non_linear="relu", hidden_units=[200,100,2],
                                                               shuffle_batch=True, n_epochs=14, sqr_norm_lim=9,
                                                               non_static=non_static, batch_size=128, dropout_rate=[0.5],
@@ -552,22 +554,22 @@ if __name__ == "__main__":
     execfile("conv_net_classes.py")
 
     data_root = '/media/HDD_2TB/DATASETS/cnn_polarity/'
-    data_dir = data_root + 'DATA/EMEA_Training'
+    data_dir = data_root + 'DATA/Emea-Euro/En-Fr'
     initial_pos_filename = 'EMEA.en-fr.Sin-repetidas'
-    initial_neg_filename = 'europarl'
-    initial_pool_filename= 'europarl_pool'
-    src_lan = 'en'
+    initial_neg_filename = 'dev'
+    initial_pool_filename= 'training'
+    src_lan = 'fr'
     trg_lan = 'en'
-    dest_dir = data_root + 'selection/Emea-en-fr_train_' + src_lan + trg_lan
+    dest_dir = data_root + 'selection/Emea-Euro/' + src_lan + trg_lan
 
     reload = False
     if not reload:
         remove_dir(dest_dir)
         create_dir_if_not_exists(dest_dir)
 
-    w2v_file = data_root + 'DATA/GoogleNews-vectors-negative300.bin'
+    w2v_file = data_root + 'DATA/word2vec_bin.' + src_lan
     semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_neg_filename, initial_pool_filename,
-                             w2v_file, word_vectors=word_vectors, non_static=non_static, n_iter=10,
+                             w2v_file, word_vectors=word_vectors, non_static=non_static, n_iter=10, max_l=102, k=200,
                              src_lan=src_lan, trg_lan=trg_lan, test_batch=5000, instances_to_add=50000, debug=True)
 
-
+    print "Finished!"
