@@ -183,11 +183,11 @@ def train_conv_net(datasets, U, img_w=300, filter_hs=[3, 4, 5], hidden_units=[10
         train_losses = [test_model(i) for i in xrange(n_train_batches)]
         train_perf = 1 - np.mean(train_losses)
         val_losses = [val_model(i) for i in xrange(n_val_batches)]
-        val_perf = 1- np.mean(val_losses)                        
+        val_perf = 1 - np.mean(val_losses)
         print('epoch: %i, training time: %.2f secs,'
           ' train perf (1-train_loss)*100: %.2f %%, '
           'val perf (1-train_loss)*100: %.2f %%' % (
-          epoch, time.time() - start_time, train_perf * 100., val_perf * 100.))
+            epoch, time.time() - start_time, train_perf * 100., val_perf * 100.))
 
     o = 0
     test_predictions = []
@@ -207,6 +207,7 @@ def train_conv_net(datasets, U, img_w=300, filter_hs=[3, 4, 5], hidden_units=[10
         test_y_pred = classifier.predict(test_layer1_input)
         test_y_pred_p = classifier.predict_p(test_layer1_input)
         test_error = T.mean(T.neq(test_y_pred, y))
+
         test_model_all = theano.function([x,y], test_error, allow_input_downcast = True)
         predict_val = theano.function([x], test_y_pred, allow_input_downcast=True)
         predict_p = theano.function([x], test_y_pred_p, allow_input_downcast=True)
@@ -434,7 +435,6 @@ def semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_n
     pool_filename_trg = data_dir + '/' + initial_pool_filename + '.' + trg_lan
 
     for i in range(n_iter):
-
         print "------------------ Starting iteration", i, "------------------"
         new_pos_filename_src = dest_dir + '/' + initial_pos_filename + '_' + str(i) + '.' + src_lan
         new_pos_filename_trg = dest_dir + '/' + initial_pos_filename + '_' + str(i) + '.' + trg_lan
@@ -554,6 +554,7 @@ if __name__ == "__main__":
     execfile("conv_net_classes.py")
 
     data_root = '/media/HDD_2TB/DATASETS/cnn_polarity/'
+
     data_dir = data_root + 'DATA/Emea-Euro/En-Fr'
     initial_pos_filename = 'EMEA.en-fr.Sin-repetidas'
     initial_neg_filename = 'dev'
@@ -569,7 +570,7 @@ if __name__ == "__main__":
 
     w2v_file = data_root + 'DATA/word2vec_bin.' + src_lan
     semisupervised_selection(data_dir, dest_dir, initial_pos_filename, initial_neg_filename, initial_pool_filename,
-                             w2v_file, word_vectors=word_vectors, non_static=non_static, n_iter=10, max_l=102, k=200,
+                             w2v_file, word_vectors=word_vectors, non_static=non_static, n_iter=10, max_l=102, k=300,
                              src_lan=src_lan, trg_lan=trg_lan, test_batch=5000, instances_to_add=50000, debug=True)
 
     print "Finished!"
